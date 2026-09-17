@@ -1,0 +1,12 @@
+# local secrets / environment files - never commit these
+*.secret
+creds-*
+.env
+.hosts
+
+# macOS noise
+.DS_Store
+
+# test scratch
+/tmp-*
+*.log
