@@ -1,0 +1,6 @@
+# When a USB storage partition appears, archive it to the NAS.
+ACTION=="add", SUBSYSTEM=="block", KERNEL=="sd[a-z][0-9]", ENV{ID_BUS}=="usb", TAG+="systemd", ENV{SYSTEMD_WANTS}+="xpg-camera-copy@%k.service"
+ACTION=="add", SUBSYSTEM=="block", KERNEL=="mmcblk[0-9]p[0-9]", ENV{ID_BUS}=="usb", TAG+="systemd", ENV{SYSTEMD_WANTS}+="xpg-camera-copy@%k.service"
+# Bij verwijderen: laat Home Assistant zien dat de kaart weg is.
+ACTION=="remove", SUBSYSTEM=="block", KERNEL=="sd[a-z][0-9]", RUN+="/usr/local/bin/xpg-usb-state off"
+ACTION=="remove", SUBSYSTEM=="block", KERNEL=="mmcblk[0-9]p[0-9]", RUN+="/usr/local/bin/xpg-usb-state off"

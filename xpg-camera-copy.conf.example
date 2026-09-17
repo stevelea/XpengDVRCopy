@@ -1,35 +1,13 @@
-# Example configuration for /usr/local/bin/copyusb.sh
-# Copy this to /etc/xpg-camera-copy.conf and edit.
-# install.sh creates this file for you; anything set here overrides the
-# built-in defaults in the script.
-
-# ---------------------------------------------------------------------------
-# What to copy
-# ---------------------------------------------------------------------------
-# "all"    -> mirror everything on the card (default, safest)
-# "videos" -> only copy the extensions listed in VIDEO_EXT
+# Settings for /usr/local/bin/copyusb.sh
+# COPY_MODE="all" copies everything; "videos" restricts to VIDEO_EXT below.
 COPY_MODE="all"
 VIDEO_EXT="mp4 mov avi mkv ts m4v 3gp lrv insv"
-
-# ---------------------------------------------------------------------------
-# Where it goes
-# ---------------------------------------------------------------------------
-# Mount point of the NAS share, and the folder inside it to archive into.
+NAS_WAIT_SECONDS="300"
 MOUNTPOINT="/mnt/nas/xpg006camera"
 DEST_SUBDIR="xpg006camera"
-
-# How long to wait for the NAS to wake up / become reachable, in seconds.
-NAS_WAIT_SECONDS="300"
-
-# ---------------------------------------------------------------------------
-# MQTT status reporting for Home Assistant (optional)
-# ---------------------------------------------------------------------------
-# Set MQTT_ENABLED="0" to disable all MQTT reporting.
 MQTT_ENABLED="1"
-
-# Leave MQTT_HOST empty to disable (no broker configured).
-MQTT_HOST=""
+MQTT_HOST="192.168.1.88"
 MQTT_PORT="1883"
-MQTT_USER=""
+MQTT_USER="mqtt"
 MQTT_PASS=""
 MQTT_PREFIX="xpg006camera"

@@ -1,0 +1,10 @@
+#!/bin/bash
+# Publish an availability state for the camera archiver. Usage: xpg-mqtt-avail online|offline
+CONF="/etc/xpg-camera-copy.conf"
+[[ -r "$CONF" ]] && . "$CONF"
+[[ "${MQTT_ENABLED:-1}" == "1" ]] || exit 0
+command -v mosquitto_pub >/dev/null 2>&1 || exit 0
+exec timeout "${MQTT_TIMEOUT:-10}" mosquitto_pub \
+    -h "${MQTT_HOST:-127.0.0.1}" -p "${MQTT_PORT:-1883}" \
+    -u "${MQTT_USER:-}" -P "${MQTT_PASS:-}" -q 1 -r \
+    -t "${MQTT_PREFIX:-xpg006camera}/availability" -m "${1:-offline}"

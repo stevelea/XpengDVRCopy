@@ -42,6 +42,29 @@ Built and tested on a **Raspberry Pi Zero W** running Raspberry Pi OS
 - **A permanent log** on the share (`_logs/copy.log`) plus the systemd journal.
 - **Handles exFAT, FAT32 and NTFS** cards.
 
+## The files in `deploy/`
+
+`install.sh` is the way to install this — it writes every file below into place
+and prompts for the things that are machine-specific. The `deploy/` directory
+holds the files themselves, so you can read what will be installed before
+running it, or install by hand:
+
+| File | Goes to | Purpose |
+|---|---|---|
+| `deploy/copyusb.sh` | `/usr/local/bin/` | the copy itself |
+| `deploy/xpg-usb-state` | `/usr/local/bin/` | publishes "card removed" — nothing runs on a pull, so udev calls this |
+| `deploy/xpg-mqtt-avail` | `/usr/local/bin/` | marks the Home Assistant entities unavailable |
+| `deploy/xpg-camera-copy@.service` | `/etc/systemd/system/` | runs the script for one device |
+| `deploy/99-xpg-camera.rules` | `/etc/udev/rules.d/` | detects the plug-in and the removal |
+
+`deploy/README.md` covers installing by hand: the package list, the `/etc/fstab`
+entry, why the mount uses `nofail`, and the design notes.
+
+These files were recovered from a running installation, so they are the versions
+actually in use rather than a remembered approximation. The broker password is
+blank in both `deploy/copyusb.sh` and `xpg-camera-copy.conf.example`; it goes in
+`/etc/xpg-camera-copy.conf` on the machine.
+
 ## How it works
 
 1. **udev** sees a USB block device appear and starts

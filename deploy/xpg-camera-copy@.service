@@ -1,0 +1,19 @@
+[Unit]
+Description=Archive car-camera USB ($1) to the NAS share
+After=network-online.target remote-fs.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Wait for a DHCP address before trying to reach the NAS.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip route | grep -q "^default" && exit 0; sleep 2; done; exit 0'
+ExecStart=/usr/local/bin/copyusb.sh /dev/%I
+# Mark the MQTT entities unavailable once no copy is running.
+ExecStopPost=-/usr/local/bin/xpg-mqtt-avail offline
+TimeoutStartSec=infinity
+Nice=10
+IOSchedulingClass=idle
+StandardOutput=journal
+StandardError=journal
