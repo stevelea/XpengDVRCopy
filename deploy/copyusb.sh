@@ -504,11 +504,15 @@ log "$changed new file(s) to transfer"
 # ----------------------------------------------------------------------------
 # 5. Copy into a dated folder for this plug-in
 # ----------------------------------------------------------------------------
+# mkdir without -p on purpose: -p succeeds when the folder already exists, so
+# the fallback below would never run. Two runs inside the same second are
+# possible - a re-plug, or the test - and they must not share a folder.
 DEST="${ARCHIVE_ROOT}/$(stamp)"
-if ! mkdir -p "$DEST" 2>/dev/null; then
-    DEST="${ARCHIVE_ROOT}/$(date '+%Y-%m-%d_%H%M%S')_$$"
-    mkdir -p "$DEST" || die "cannot create destination folder under $ARCHIVE_ROOT"
-fi
+# mkdir without -p on purpose: -p succeeds when the folder already exists, so the
+# fallback would never run. Two runs inside the same second are possible - a
+# re-plug, or the test - and they must not share a folder.
+mkdir "$DEST" 2>/dev/null || mkdir "${DEST}_$$" 2>/dev/null || die "cannot create destination folder under $ARCHIVE_ROOT"
+[[ -d "${DEST}_$$" && ! -d "$DEST" ]] && DEST="${DEST}_$$"
 log "destination: $DEST"
 
 set_led busy

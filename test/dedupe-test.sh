@@ -12,7 +12,7 @@
 # Usage: bash test/dedupe-test.sh [path-to-copyusb.sh]
 set -uo pipefail
 
-SCRIPT="${1:-$(cd "$(dirname "$0")/.." && pwd)/copyusb.sh}"
+SCRIPT="${1:-$(cd "$(dirname "$0")/.." && pwd)/deploy/copyusb.sh}"
 [[ -f "$SCRIPT" ]] || { echo "cannot find copyusb.sh at $SCRIPT" >&2; exit 1; }
 
 T="$(mktemp -d)"
@@ -96,6 +96,14 @@ check "one extra file"   "$(files)"   "4"
 grep -q '1 new file(s) to transfer' <<<"$out" \
     && printf '  ok   %-46s\n' "only the new clip transferred" \
     || { printf '  FAIL %-46s\n' "only the new clip transferred"; fail=1; }
+
+echo
+echo "4. two runs in the same second (a re-plug, or a slow clock)"
+echo 'CLIP-FOUR' > "$T/usb/DCIM/Movie/clip4.MP4"
+out="$(run_copy)"; before="$(folders)"
+out="$(run_copy)"; after="$(folders)"
+# The second run adds nothing, so it must not leave a folder behind either way.
+check "no folder left from the repeat" "$after" "$before"
 
 echo
 if (( fail )); then
