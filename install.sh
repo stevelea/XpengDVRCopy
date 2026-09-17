@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh - set up the Pi Zero W to archive car-camera footage to the NAS.
+# install.sh - set up a Raspberry Pi to archive car DVR footage to a NAS share.
 #
 # Run ON THE PI as root:
 #     sudo bash install.sh
