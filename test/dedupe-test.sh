@@ -106,6 +106,20 @@ out="$(run_copy)"; after="$(folders)"
 check "no folder left from the repeat" "$after" "$before"
 
 echo
+echo "5. the fallback when the dated folder is already taken"
+# Sleep past the second boundary first: otherwise the name we occupy may be the
+# one an earlier case already used, and this folder would hold that copy's files.
+sleep 1
+taken="$ARCHIVE/$(date '+%Y-%m-%d_%H%M%S')"
+mkdir -p "$taken"
+before="$(folders)"
+echo 'CLIP-FIVE' > "$T/usb/DCIM/Movie/clip5.MP4"
+out="$(run_copy)"
+after="$(folders)"
+check "a different folder was used" "$after" "$(( before + 1 ))"
+check "the occupied folder was left alone" "$(find "$taken" -type f | wc -l | tr -d ' ')" "0"
+
+echo
 if (( fail )); then
     echo "RESULT: FAILED"
     exit 1
