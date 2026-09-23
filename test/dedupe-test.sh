@@ -107,8 +107,9 @@ check "no folder left from the repeat" "$after" "$before"
 
 echo
 echo "5. the fallback when the dated folder is already taken"
-# Sleep past the second boundary first: otherwise the name we occupy may be the
-# one an earlier case already used, and this folder would hold that copy's files.
+# Deterministic, unlike racing two runs. Occupy the name the script will pick,
+# then copy something new: it must create a DIFFERENT folder rather than fail or
+# write into the one that was already there.
 sleep 1
 taken="$ARCHIVE/$(date '+%Y-%m-%d_%H%M%S')"
 mkdir -p "$taken"

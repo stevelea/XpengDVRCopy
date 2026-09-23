@@ -1,13 +1,40 @@
 # Settings for /usr/local/bin/copyusb.sh
-# COPY_MODE="all" copies everything; "videos" restricts to VIDEO_EXT below.
+
+# ---------------------------------------------------------------------------
+# What to copy
+# ---------------------------------------------------------------------------
 COPY_MODE="all"
 VIDEO_EXT="mp4 mov avi mkv ts m4v 3gp lrv insv"
 NAS_WAIT_SECONDS="300"
+
+# ---------------------------------------------------------------------------
+# Where it goes
+# ---------------------------------------------------------------------------
 MOUNTPOINT="/mnt/nas/xpg006camera"
 DEST_SUBDIR="xpg006camera"
+
+# ---------------------------------------------------------------------------
+# MQTT status reporting for Home Assistant
+# ---------------------------------------------------------------------------
 MQTT_ENABLED="1"
 MQTT_HOST="192.168.1.88"
 MQTT_PORT="1883"
 MQTT_USER="mqtt"
 MQTT_PASS=""
 MQTT_PREFIX="xpg006camera"
+
+# How the archiver appears in Home Assistant. If you run more than one of these
+# boards, give each its own PREFIX or the entities will collide.
+MQTT_DEVICE_NAME="Camera archiver"
+MQTT_DEVICE_ID="xpg006camera_archiver"
+MQTT_DEVICE_MODEL="USB card archiver"
+MQTT_DEVICE_MANUFACTURER=""      # blank leaves it out of the discovery payload
+
+# ---------------------------------------------------------------------------
+# LED feedback (optional - the board may not have a controllable one)
+# ---------------------------------------------------------------------------
+# Leave empty to auto-detect the first drivable LED, or name one explicitly:
+#   Raspberry Pi   LED_NAME="ACT"
+#   Orange Pi      LED_NAME="green:red"   (check /sys/class/leds/)
+#   no LED, or don't want it:  LED_NAME="none"
+LED_NAME=""

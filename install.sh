@@ -19,6 +19,7 @@ CRED_FILE="/etc/samba/creds-xpg006camera"
 COPY_SCRIPT="/usr/local/bin/copyusb.sh"
 CONF_FILE="/etc/xpg-camera-copy.conf"
 SERVICE="xpg-camera-copy@.service"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 FSTAB_TAG="# xpg006camera NAS archive"
 
 [[ $EUID -eq 0 ]] || { echo "run me as root: sudo bash $0" >&2; exit 1; }
@@ -89,7 +90,7 @@ else
 fi
 
 say "Installing the copy script"
-install -m 755 "$(dirname "$0")/copyusb.sh" "$COPY_SCRIPT"
+install -m 755 "$HERE/deploy/copyusb.sh" "$COPY_SCRIPT"
 
 # Helper used by the systemd unit to mark the MQTT entities offline; it reads
 # the broker settings from the config file instead of hardcoding them.
@@ -106,6 +107,10 @@ exec timeout "${MQTT_TIMEOUT:-10}" mosquitto_pub \
     -t "${MQTT_PREFIX:-xpg006camera}/availability" -m "${1:-offline}"
 AVAIL
 chmod 755 /usr/local/bin/xpg-mqtt-avail
+
+# The udev removal rule calls this to announce that the card is gone. Nothing
+# runs on a pull, so the script itself cannot report it.
+install -m 755 "$HERE/deploy/xpg-usb-state" /usr/local/bin/xpg-usb-state
 
 # Create the config on first install, and add any newly introduced settings to
 # an existing file without touching what you have already customised.

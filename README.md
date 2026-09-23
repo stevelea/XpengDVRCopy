@@ -192,6 +192,49 @@ actions:
 
 Set `MQTT_ENABLED="0"` in `/etc/xpg-camera-copy.conf` to turn reporting off.
 
+## Other hardware than a Raspberry Pi
+
+The copy logic is board-agnostic: the udev rule matches any USB storage device,
+the service waits for a default route rather than for a particular network
+manager, and the device name is derived from the kernel (`/dev/sda1` and
+`/dev/mmcblk0p1` are both handled).
+
+What differs between boards is the **LED**, and the name it reports to Home
+Assistant. Both are settings:
+
+```ini
+LED_NAME="green:red"                # or "ACT", or "none"
+MQTT_DEVICE_NAME="Camera archiver"
+MQTT_DEVICE_ID="xpg006camera_archiver"
+MQTT_DEVICE_MODEL="USB card archiver"
+```
+
+`LED_NAME` empty means "take the first LED that can be driven"; `"none"` means
+no LED at all. **A board with no controllable LED is fine** — the copy is
+unaffected, and the MQTT status is the indication instead. Check what a board
+offers with:
+
+```bash
+for d in /sys/class/leds/*; do echo "$d  writable=$([ -w $d/trigger ] && echo yes)"; done
+```
+
+If you run more than one of these boards, give each its own `MQTT_PREFIX` or
+`MQTT_DEVICE_ID`, otherwise their Home Assistant entities collide.
+
+### Why it is worth using a faster board
+
+The bottleneck is the **network path, not the CPU**. A Raspberry Pi Zero W
+copies at roughly 1 MB/s over SMB — 310 GB took about 63 hours in practice. Any
+quad-core board with USB 3.0 and gigabit Ethernet copies at closer to 100 MB/s,
+turning the same archive into about 50 minutes. Wired is worth the cable.
+
+### Android will not work
+
+Android is a Linux kernel with none of the surrounding machinery: no udev, no
+systemd, no `/etc/fstab`, and a read-only `/system`. `mount.cifs`, `rsync` and
+`mosquitto-clients` are not available either. A board sold running Android needs
+a real distribution before this can be installed on it.
+
 ## Configuration
 
 Settings live in `/etc/xpg-camera-copy.conf` (see

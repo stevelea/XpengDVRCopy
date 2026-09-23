@@ -31,8 +31,38 @@ VIDEO_EXT="mp4 mov avi mkv ts m4v 3gp lrv insv"
 NAS_WAIT_SECONDS="300"
 
 LOCK_FILE="/run/xpg-camera-copy.lock"
-LED_TRIGGER="/sys/class/leds/ACT/trigger"
-LED_BRIGHTNESS="/sys/class/leds/ACT/brightness"
+
+# LED feedback. Names differ per board - Raspberry Pi uses ACT, Orange Pi boards
+# expose green:red, some expose none at all. Leave LED_NAME empty to take the
+# first LED that can be driven, or set LED_NAME="none" for no LED. A board with
+# no controllable LED is fine: the copy is unaffected and the MQTT status is the
+# indication instead.
+LED_NAME="${LED_NAME:-}"
+LED_DIR=""                                  # resolved below
+LED_TRIGGER=""
+LED_BRIGHTNESS=""
+
+resolve_led() {
+    [[ "$LED_NAME" == "none" ]] && return 0
+    local root="${LED_ROOT:-/sys/class/leds}"
+    local base candidates=()
+    if [[ -n "$LED_NAME" ]]; then
+        candidates=("$root/$LED_NAME")
+    else
+        # Prefer the names known to work, then anything writable.
+        candidates=("$root/ACT" "$root/green" "$root/green:red" "$root/red")
+        for d in "$root"/*; do [[ -e "$d" ]] && candidates+=("$d"); done
+    fi
+    for base in "${candidates[@]}"; do
+        if [[ -w "$base/trigger" ]]; then
+            LED_DIR="$base"
+            LED_TRIGGER="$base/trigger"
+            LED_BRIGHTNESS="$base/brightness"
+            return 0
+        fi
+    done
+    return 0
+}
 
 # MQTT status reporting (for Home Assistant). Set MQTT_ENABLED="0" to disable.
 # States published: idle -> waiting -> copying -> safe | error
@@ -42,12 +72,17 @@ MQTT_PORT="1883"
 MQTT_USER="mqtt"
 MQTT_PASS=""                 # set in /etc/xpg-camera-copy.conf
 MQTT_PREFIX="xpg006camera"          # topic prefix
+MQTT_DEVICE_NAME="Camera archiver"  # shown in Home Assistant
+MQTT_DEVICE_ID="xpg006camera_archiver"   # unique; change if you run two
+MQTT_DEVICE_MODEL="USB card archiver"
+MQTT_DEVICE_MANUFACTURER=""          # blank leaves it out of the payload
 MQTT_RETAIN="1"                     # retain so Home Assistant sees the last state
 MQTT_TIMEOUT="10"                   # seconds
 
 # Config file (XPG_CONF overrides the location; used by the test harness).
 CONF_FILE="${XPG_CONF:-/etc/xpg-camera-copy.conf}"
 if [[ -r "$CONF_FILE" ]]; then . "$CONF_FILE"; fi
+resolve_led
 
 DEV="${1:-}"
 ONCE=0
@@ -96,16 +131,17 @@ stamp() { date '+%Y-%m-%d_%H%M%S'; }
 
 # Onboard LED: solid while copying, slow blink = success, fast blink = failure.
 set_led() {
-    [[ -w "$LED_TRIGGER" ]] || return 0
+    [[ -n "$LED_DIR" && -w "$LED_TRIGGER" ]] || return 0
     case "$1" in
         busy)  echo none  > "$LED_TRIGGER" 2>/dev/null; echo 1 > "$LED_BRIGHTNESS" 2>/dev/null ;;
         done)  echo timer > "$LED_TRIGGER" 2>/dev/null
-               echo 500 > /sys/class/leds/ACT/delay_on  2>/dev/null
-               echo 500 > /sys/class/leds/ACT/delay_off 2>/dev/null ;;
+               echo 500 > "$LED_DIR/delay_on"  2>/dev/null
+               echo 500 > "$LED_DIR/delay_off" 2>/dev/null ;;
         error) echo timer > "$LED_TRIGGER" 2>/dev/null
-               echo 100 > /sys/class/leds/ACT/delay_on  2>/dev/null
-               echo 900 > /sys/class/leds/ACT/delay_off 2>/dev/null ;;
-        idle)  echo mmc0 > "$LED_TRIGGER" 2>/dev/null ;;
+               echo 100 > "$LED_DIR/delay_on"  2>/dev/null
+               echo 900 > "$LED_DIR/delay_off" 2>/dev/null ;;
+        idle)  # mmc0 is a Raspberry Pi trigger; harmless where it does not exist
+               echo mmc0 > "$LED_TRIGGER" 2>/dev/null ;;
     esac
 }
 
@@ -213,10 +249,10 @@ print(json.dumps({
     "payload_not_available": "offline",
     "icon": "mdi:content-duplicate",
     "device": {
-        "identifiers": ["xpg006camera_pi"],
-        "name": "Pi camera archiver",
-        "manufacturer": "Raspberry Pi",
-        "model": "Raspberry Pi Zero W",
+        "identifiers": ["$MQTT_DEVICE_ID"],
+        "name": "$MQTT_DEVICE_NAME",
+        "manufacturer": "$MQTT_DEVICE_MANUFACTURER",
+        "model": "$MQTT_DEVICE_MODEL",
     },
 }))
 PYEOF
@@ -237,8 +273,8 @@ print(json.dumps({
     "device_class": "running",
     "icon": "mdi:usb-flash-drive",
     "device": {
-        "identifiers": ["xpg006camera_pi"],
-        "name": "Pi camera archiver",
+        "identifiers": ["$MQTT_DEVICE_ID"],
+        "name": "$MQTT_DEVICE_NAME",
     },
 }))
 PYEOF
@@ -258,8 +294,8 @@ print(json.dumps({
     "device_class": "timestamp",
     "icon": "mdi:clock-check-outline",
     "device": {
-        "identifiers": ["xpg006camera_pi"],
-        "name": "Pi camera archiver",
+        "identifiers": ["$MQTT_DEVICE_ID"],
+        "name": "$MQTT_DEVICE_NAME",
     },
 }))
 PYEOF
@@ -267,31 +303,31 @@ PYEOF
 
     # Kaart aangesloten?
     mqtt_pub_stdin "$MQTT_DISCOVERY_PREFIX/binary_sensor/xpg006camera/usb/config" <<JSON
-{"name":"Car camera USB connected","unique_id":"xpg006camera_usb","state_topic":"$MQTT_TOPIC_USB","payload_on":"on","payload_off":"off","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","device_class":"plug","icon":"mdi:usb-flash-drive","device":{"identifiers":["xpg006camera_pi"],"name":"Pi camera archiver"}}
+{"name":"Car camera USB connected","unique_id":"xpg006camera_usb","state_topic":"$MQTT_TOPIC_USB","payload_on":"on","payload_off":"off","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","device_class":"plug","icon":"mdi:usb-flash-drive","device":{"identifiers":["$MQTT_DEVICE_ID"],"name":"$MQTT_DEVICE_NAME"}}
 JSON
     echo "  discovery: usb connected"
 
     # Hoeveel bestanden de laatste ronde overzette (0 = niets nieuws).
     mqtt_pub_stdin "$MQTT_DISCOVERY_PREFIX/sensor/xpg006camera/count/config" <<JSON
-{"name":"Car camera new clips","unique_id":"xpg006camera_count","state_topic":"$MQTT_TOPIC_COUNT","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","unit_of_measurement":"files","icon":"mdi:file-video-plus","device":{"identifiers":["xpg006camera_pi"],"name":"Pi camera archiver"}}
+{"name":"Car camera new clips","unique_id":"xpg006camera_count","state_topic":"$MQTT_TOPIC_COUNT","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","unit_of_measurement":"files","icon":"mdi:file-video-plus","device":{"identifiers":["$MQTT_DEVICE_ID"],"name":"$MQTT_DEVICE_NAME"}}
 JSON
     echo "  discovery: new-clips count"
 
     # Toestand van de kijker op de NAS: wanneer voor het laatst geindexeerd.
     mqtt_pub_stdin "$MQTT_DISCOVERY_PREFIX/sensor/xpg006camera/indexed/config" <<JSON
-{"name":"Car camera viewer indexed","unique_id":"xpg006camera_indexed","state_topic":"xpg006camera/indexed","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","device_class":"timestamp","icon":"mdi:database-clock","device":{"identifiers":["xpg006camera_pi"],"name":"Pi camera archiver"}}
+{"name":"Car camera viewer indexed","unique_id":"xpg006camera_indexed","state_topic":"xpg006camera/indexed","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","device_class":"timestamp","icon":"mdi:database-clock","device":{"identifiers":["$MQTT_DEVICE_ID"],"name":"$MQTT_DEVICE_NAME"}}
 JSON
     echo "  discovery: viewer indexed"
 
     # Aantal clips in de kijker.
     mqtt_pub_stdin "$MQTT_DISCOVERY_PREFIX/sensor/xpg006camera/clips/config" <<JSON
-{"name":"Car camera clips indexed","unique_id":"xpg006camera_clips","state_topic":"xpg006camera/clips","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","unit_of_measurement":"clips","icon":"mdi:video-vintage","device":{"identifiers":["xpg006camera_pi"],"name":"Pi camera archiver"}}
+{"name":"Car camera clips indexed","unique_id":"xpg006camera_clips","state_topic":"xpg006camera/clips","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","unit_of_measurement":"clips","icon":"mdi:video-vintage","device":{"identifiers":["$MQTT_DEVICE_ID"],"name":"$MQTT_DEVICE_NAME"}}
 JSON
     echo "  discovery: clips indexed"
 
     # Knop om de kijker opnieuw te laten indexeren.
     mqtt_pub_stdin "$MQTT_DISCOVERY_PREFIX/button/xpg006camera/reindex/config" <<JSON
-{"name":"Car camera re-index viewer","unique_id":"xpg006camera_reindex","command_topic":"$MQTT_TOPIC_CMD","payload_press":"reindex","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","icon":"mdi:database-refresh","device":{"identifiers":["xpg006camera_pi"],"name":"Pi camera archiver"}}
+{"name":"Car camera re-index viewer","unique_id":"xpg006camera_reindex","command_topic":"$MQTT_TOPIC_CMD","payload_press":"reindex","availability_topic":"$MQTT_TOPIC_AVAIL","payload_available":"online","payload_not_available":"offline","icon":"mdi:database-refresh","device":{"identifiers":["$MQTT_DEVICE_ID"],"name":"$MQTT_DEVICE_NAME"}}
 JSON
     echo "  discovery: re-index button"
 
@@ -504,11 +540,14 @@ log "$changed new file(s) to transfer"
 # ----------------------------------------------------------------------------
 # 5. Copy into a dated folder for this plug-in
 # ----------------------------------------------------------------------------
+# mkdir without -p on purpose: -p succeeds when the folder already exists, so
+# the fallback below would never run. Two runs inside the same second are
+# possible - a re-plug, or the test - and they must not share a folder.
 DEST="${ARCHIVE_ROOT}/$(stamp)"
 # mkdir without -p on purpose: -p succeeds when the folder already exists, so a
 # fallback guarded on its failure would never run. An if/else makes the outcome
-# unambiguous; the previous attempt tested the filesystem afterwards, which
-# reported success when it had not chosen the fallback.
+# unambiguous; testing the filesystem afterwards reported success without having
+# chosen the fallback.
 if mkdir "$DEST" 2>/dev/null; then
     :
 elif mkdir "${DEST}_$$" 2>/dev/null; then
