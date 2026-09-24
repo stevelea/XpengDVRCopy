@@ -39,6 +39,7 @@ LOCK_FILE="/run/xpg-camera-copy.lock"
 # indication instead.
 LED_NAME="${LED_NAME:-}"
 LED_DIR=""                                  # resolved below
+LED_IDLE_TRIGGER="none"                     # the board's own default, restored on idle
 LED_TRIGGER=""
 LED_BRIGHTNESS=""
 
@@ -69,6 +70,10 @@ resolve_led() {
             LED_DIR="$base"
             LED_TRIGGER="$base/trigger"
             LED_BRIGHTNESS="$base/brightness"
+            # Remember what the board had, so idle can put it back. mmc0 is a
+            # Raspberry Pi trigger; on another board it means nothing.
+            LED_IDLE_TRIGGER="$(sed -n 's/.*\[\(.*\)\].*/\1/p' "$base/trigger" 2>/dev/null)"
+            [[ -n "$LED_IDLE_TRIGGER" ]] || LED_IDLE_TRIGGER="none"
             return 0
         fi
     done
@@ -151,8 +156,7 @@ set_led() {
         error) echo timer > "$LED_TRIGGER" 2>/dev/null
                echo 100 > "$LED_DIR/delay_on"  2>/dev/null
                echo 900 > "$LED_DIR/delay_off" 2>/dev/null ;;
-        idle)  # mmc0 is a Raspberry Pi trigger; harmless where it does not exist
-               echo mmc0 > "$LED_TRIGGER" 2>/dev/null ;;
+        idle)  echo "$LED_IDLE_TRIGGER" > "$LED_TRIGGER" 2>/dev/null ;;
     esac
 }
 
