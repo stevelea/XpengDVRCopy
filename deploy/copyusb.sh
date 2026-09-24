@@ -49,9 +49,20 @@ resolve_led() {
     if [[ -n "$LED_NAME" ]]; then
         candidates=("$root/$LED_NAME")
     else
-        # Prefer the names known to work, then anything writable.
-        candidates=("$root/ACT" "$root/green" "$root/green:red" "$root/red")
-        for d in "$root"/*; do [[ -e "$d" ]] && candidates+=("$d"); done
+        # Prefer names known to be status LEDs, then anything writable. The
+        # board-specific ones matter: without them the glob can land on a
+        # keyboard LED such as input3::capslock, which looks like it worked and
+        # tells you nothing.
+        candidates=(
+            "$root/ACT"                     # Raspberry Pi
+            "$root/orangepi:red:status"     # Orange Pi - the status LED
+            "$root/orangepi:green:power"    # Orange Pi - power, used only as a fallback
+            "$root/green" "$root/green:red" "$root/red"
+        )
+        for d in "$root"/*; do
+            case "$d" in *input*|*capslock*|*numlock*|*scrolllock*) continue ;; esac
+            [[ -e "$d" ]] && candidates+=("$d")
+        done
     fi
     for base in "${candidates[@]}"; do
         if [[ -w "$base/trigger" ]]; then
