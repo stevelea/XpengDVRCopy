@@ -54,8 +54,10 @@ running it, or install by hand:
 |---|---|---|
 | `deploy/copyusb.sh` | `/usr/local/bin/` | the copy itself |
 | `deploy/xpg-usb-state` | `/usr/local/bin/` | publishes "card removed" — nothing runs on a pull, so udev calls this |
-| `deploy/xpg-mqtt-avail` | `/usr/local/bin/` | marks the Home Assistant entities unavailable |
+| `deploy/xpg-mqtt-avail` | `/usr/local/bin/` | publishes one availability message |
+| `deploy/xpg-mqtt-availd` | `/usr/local/bin/` | holds the entities online while the board is up |
 | `deploy/xpg-camera-copy@.service` | `/etc/systemd/system/` | runs the script for one device |
+| `deploy/xpg-mqtt-avail.service` | `/etc/systemd/system/` | keeps that availability process running |
 | `deploy/99-xpg-camera.rules` | `/etc/udev/rules.d/` | detects the plug-in and the removal |
 
 `deploy/README.md` covers installing by hand: the package list, the `/etc/fstab`
@@ -70,12 +72,32 @@ blank in both `deploy/copyusb.sh` and `xpg-camera-copy.conf.example`; it goes in
 
 1. **udev** sees a USB block device appear and starts
    `xpg-camera-copy@<device>.service`.
-2. The **systemd unit** waits for a default route, runs the copy, and marks the
-   MQTT entities offline when it exits.
+2. The **systemd unit** waits for a default route, runs the copy, and exits.
+   It deliberately does *not* touch the MQTT availability topic — see below.
 3. **`copyusb.sh`** mounts the card if nothing else has (read-only), waits for
    the NAS share, works out which files are genuinely new, and `rsync`s them
    into `…/xpg006camera/<date>/<filesystem>/`.
 4. **MQTT** publishes `idle → waiting → copying → safe` (or `error`).
+
+### Why availability is its own service
+
+The copy service is a **oneshot**: it starts when a card appears and stops the
+moment the copy ends. Marking the entities offline from its `ExecStopPost`
+therefore looked reasonable and was actively wrong — the service stops at the
+same instant it publishes `safe`, so Home Assistant replaced "safe" with
+"unavailable" and there was no way to tell that the copy had finished.
+
+So `xpg-mqtt-avail.service` holds the availability topic instead. It stays
+connected for as long as the board is up, and it covers both ways the board can
+go away:
+
+- a **clean stop** (shutdown, reboot, `systemctl stop`) is announced by
+  `ExecStopPost`;
+- a **crash or power cut** cannot announce anything, so the process registers an
+  MQTT **last will** with the broker, which publishes `offline` on its behalf.
+
+It also republishes `online` every five minutes, which costs one tiny message and
+repairs a retained `offline` that arrives late.
 
 ### Why the dedupe is done by hand
 
@@ -171,6 +193,10 @@ Three entities are published via MQTT discovery and appear automatically:
 Plus `xpg006camera/detail` (human-readable detail) and
 `xpg006camera/availability` (`online`/`offline`). **All messages are retained**,
 so Home Assistant shows the correct state after a restart.
+
+The entities only go `unavailable` when the board itself is gone — not when a
+copy finishes. If you ever see them unavailable while the board is up, check
+`systemctl status xpg-mqtt-avail`.
 
 To (re)publish discovery:
 
@@ -274,6 +300,8 @@ MQTT_ENABLED="0"
 
 ## Testing
 
+Two suites, neither needing root, a NAS or a real card.
+
 `test/dedupe-test.sh` runs the copy logic against a mock environment (fake
 device, mocked `mountpoint`/`findmnt`) and asserts the three behaviours that
 matter most:
@@ -284,9 +312,15 @@ matter most:
 
 ```bash
 bash test/dedupe-test.sh
+bash test/mqtt-avail-test.sh
 ```
 
-No root, no NAS and no real USB drive required.
+`test/mqtt-avail-test.sh` guards the availability rules with a fake broker
+client: that the copy service never marks the entities offline, that the
+availability service does announce a clean stop, that it registers a last will
+for a crash, and that `RemainAfterExit` has not crept back onto the copy unit.
+Both suites stub out `timeout(1)`, so they run on macOS as well as on the
+board.
 
 ## Troubleshooting
 
@@ -331,7 +365,7 @@ sudo /usr/local/bin/copyusb.sh /dev/sdX1 --once
 **Disable everything**
 
 ```bash
-sudo systemctl disable --now xpg-camera-copy@.service
+sudo systemctl disable --now xpg-camera-copy@.service xpg-mqtt-avail.service
 sudo rm /etc/udev/rules.d/99-xpg-camera.rules
 sudo udevadm control --reload-rules
 ```
@@ -339,11 +373,13 @@ sudo udevadm control --reload-rules
 ## Uninstall
 
 ```bash
-sudo systemctl disable --now xpg-camera-copy@.service
+sudo systemctl disable --now xpg-camera-copy@.service xpg-mqtt-avail.service
 sudo rm -f /etc/systemd/system/xpg-camera-copy@.service \
+           /etc/systemd/system/xpg-mqtt-avail.service \
            /etc/udev/rules.d/99-xpg-camera.rules \
            /usr/local/bin/copyusb.sh \
            /usr/local/bin/xpg-mqtt-avail \
+           /usr/local/bin/xpg-mqtt-availd \
            /etc/xpg-camera-copy.conf \
            /etc/samba/creds-xpg006camera
 sudo udevadm control --reload-rules

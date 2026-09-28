@@ -93,25 +93,19 @@ fi
 say "Installing the copy script"
 install -m 755 "$HERE/deploy/copyusb.sh" "$COPY_SCRIPT"
 
-# Helper used by the systemd unit to mark the MQTT entities offline; it reads
-# the broker settings from the config file instead of hardcoding them.
-cat > /usr/local/bin/xpg-mqtt-avail <<'AVAIL'
-#!/bin/bash
-# Publish an availability state for the camera archiver. Usage: xpg-mqtt-avail online|offline
-CONF="/etc/xpg-camera-copy.conf"
-[[ -r "$CONF" ]] && . "$CONF"
-[[ "${MQTT_ENABLED:-1}" == "1" ]] || exit 0
-command -v mosquitto_pub >/dev/null 2>&1 || exit 0
-exec timeout "${MQTT_TIMEOUT:-10}" mosquitto_pub \
-    -h "${MQTT_HOST:-127.0.0.1}" -p "${MQTT_PORT:-1883}" \
-    -u "${MQTT_USER:-}" -P "${MQTT_PASS:-}" -q 1 -r \
-    -t "${MQTT_PREFIX:-xpg006camera}/availability" -m "${1:-offline}"
-AVAIL
-chmod 755 /usr/local/bin/xpg-mqtt-avail
+# Installed from deploy/ rather than written inline here. The unit had already
+# drifted from the tested copy once, and the inline heredoc for xpg-mqtt-avail
+# was a second place for the same thing to go stale.
+install -m 755 "$HERE/deploy/xpg-mqtt-avail" /usr/local/bin/xpg-mqtt-avail
 
 # The udev removal rule calls this to announce that the card is gone. Nothing
 # runs on a pull, so the script itself cannot report it.
 install -m 755 "$HERE/deploy/xpg-usb-state" /usr/local/bin/xpg-usb-state
+
+# Holds the MQTT availability topic online for as long as the board is up. The
+# copy service cannot: it is a oneshot, and it stops at the moment it reports
+# "safe", which is exactly when the entities must stay readable.
+install -m 755 "$HERE/deploy/xpg-mqtt-availd" /usr/local/bin/xpg-mqtt-availd
 
 # Create the config on first install, and add any newly introduced settings to
 # an existing file without touching what you have already customised.
@@ -147,6 +141,12 @@ else
     done
     echo "    kept existing $CONF_FILE (added $added new setting(s))"
 fi
+
+say "Installing the MQTT availability service"
+install -m 644 "$HERE/deploy/xpg-mqtt-avail.service" /etc/systemd/system/xpg-mqtt-avail.service
+systemctl daemon-reload
+systemctl enable xpg-mqtt-avail.service >/dev/null 2>&1 || true
+systemctl restart xpg-mqtt-avail.service || true
 
 say "Installing the plug-in detection service"
 # Installed from deploy/ rather than written inline: the unit had already drifted

@@ -1,0 +1,25 @@
+[Unit]
+Description=Keep the camera archiver's MQTT availability online
+Documentation=https://github.com/stevelea/XpengDVRCopy
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Availability must not belong to the copy service. That one is a oneshot: it
+# runs, finishes and disappears with every card, so marking the entities offline
+# when it stopped told Home Assistant "unavailable" at the very moment the
+# status became "safe".
+ExecStart=/usr/local/bin/xpg-mqtt-availd
+# A clean stop says goodbye here. A crash or a power cut cannot, so the script
+# registers an MQTT last will with the broker as well.
+ExecStopPost=-/usr/local/bin/xpg-mqtt-avail offline
+# Deliberately not Restart=always: the script exits 0 when MQTT is turned off in
+# the configuration, and that must not turn into a restart loop.
+Restart=on-failure
+RestartSec=15
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

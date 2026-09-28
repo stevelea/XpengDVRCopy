@@ -1,0 +1,71 @@
+#!/bin/bash
+# Hold the camera archiver's MQTT availability topic "online" for as long as this
+# board is alive.
+#
+# Why this is a separate, long running process: the copy service is a oneshot. It
+# starts when a card is inserted, finishes and goes away again. If that service
+# owned the availability topic it would have to mark the entities offline when it
+# stopped - which is the same instant it publishes "safe", so Home Assistant
+# showed "unavailable" exactly when you wanted to read "safe". Availability has
+# to belong to something that stays up.
+#
+# Two failure modes are covered separately:
+#   - a clean stop (shutdown, reboot, systemctl stop) is announced by
+#     ExecStopPost in xpg-mqtt-avail.service;
+#   - a crash or a power cut cannot say anything, so the MQTT last will
+#     registered below is published by the broker instead.
+set -uo pipefail
+
+# XPG_CONF exists so the test harness can point at a throwaway configuration.
+CONF="${XPG_CONF:-/etc/xpg-camera-copy.conf}"
+[[ -r "$CONF" ]] && . "$CONF"
+
+# Exiting 0 with nothing to do is deliberate: the unit uses Restart=on-failure,
+# so this must not become a restart loop.
+if [[ "${MQTT_ENABLED:-1}" != "1" ]]; then
+    echo "MQTT disabled in $CONF - not holding the availability topic"
+    exit 0
+fi
+if ! command -v mosquitto_sub >/dev/null 2>&1; then
+    echo "mosquitto_sub is not installed - install mosquitto-clients" >&2
+    exit 0
+fi
+
+HOST="${MQTT_HOST:-127.0.0.1}"
+PORT="${MQTT_PORT:-1883}"
+USER="${MQTT_USER:-}"
+PASS="${MQTT_PASS:-}"
+TOPIC="${MQTT_PREFIX:-xpg006camera}/availability"
+TIMEOUT="${MQTT_TIMEOUT:-10}"
+# A stable client id, so a restart takes over its own session instead of leaving
+# orphaned ones behind on the broker.
+CLIENT_ID="${MQTT_PREFIX:-xpg006camera}-avail"
+# Republish this often. Costs one tiny message and heals two things: a retained
+# "offline" left behind by a will that arrived late, and a broker that restarted
+# while we were reconnecting.
+HEARTBEAT="${MQTT_HEARTBEAT:-300}"
+
+publish_online() {
+    timeout "$TIMEOUT" mosquitto_pub -h "$HOST" -p "$PORT" \
+        -u "$USER" -P "$PASS" -q 1 -r -t "$TOPIC" -m online
+}
+
+# The last will: if this process dies without disconnecting, the broker
+# publishes this for us.
+mosquitto_sub -h "$HOST" -p "$PORT" -u "$USER" -P "$PASS" -q 1 \
+    -i "$CLIENT_ID" -t "$TOPIC" \
+    --will-topic "$TOPIC" --will-payload offline --will-qos 1 --will-retain &
+SUB=$!
+trap 'kill "$SUB" 2>/dev/null' TERM INT
+
+# Announce only after subscribing. A restart takes over our own client id, and
+# the broker then publishes the will of the session it just dropped; saying
+# "online" before that would be overwritten by our own dying words.
+while kill -0 "$SUB" 2>/dev/null; do
+    publish_online || echo "WARNING: could not publish online to $HOST" >&2
+    sleep "$HEARTBEAT"
+done
+
+# The subscription ended, so we can no longer keep the topic honest. Let the
+# exit code reach systemd, which restarts us.
+wait "$SUB"

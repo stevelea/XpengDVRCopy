@@ -18,7 +18,9 @@ install.
 |---|---|---|
 | `copyusb.sh` | `/usr/local/bin/copyusb.sh` | the copy itself |
 | `xpg-usb-state` | `/usr/local/bin/xpg-usb-state` | publishes "card removed" |
-| `xpg-mqtt-avail` | `/usr/local/bin/xpg-mqtt-avail` | marks the HA entities offline |
+| `xpg-mqtt-avail` | `/usr/local/bin/xpg-mqtt-avail` | publishes one availability message |
+| `xpg-mqtt-availd` | `/usr/local/bin/xpg-mqtt-availd` | holds the HA entities online |
+| `xpg-mqtt-avail.service` | `/etc/systemd/system/` | keeps that process running |
 | `xpg-camera-copy@.service` | `/etc/systemd/system/` | runs the script for one device |
 | `99-xpg-camera.rules` | `/etc/udev/rules.d/` | detects the plug-in and the removal |
 | `xpg-camera-copy.conf.example` | `/etc/xpg-camera-copy.conf` | settings |
@@ -26,15 +28,19 @@ install.
 `xpg-camera-copy.conf.example` has an empty `MQTT_PASS`. Fill it in on the
 machine; it is not in this repository on purpose.
 
-## Why two helpers exist
+## Why the helpers exist
 
 `copyusb.sh` announces "the card is connected" when it starts. It cannot announce
 the opposite, because nothing runs when a card is pulled — so `xpg-usb-state` is
 called by the udev `remove` rule instead.
 
-`xpg-mqtt-avail` is called from the unit's `ExecStopPost`, so the Home Assistant
-entities go unavailable when no copy is running rather than showing a stale
-state.
+`xpg-mqtt-availd` is what keeps the Home Assistant entities *available*.
+Availability cannot live on the copy service, because that service is a oneshot
+and stops at the same instant it publishes `safe`: Home Assistant then showed
+"unavailable" exactly when you wanted to read "safe". So a separate long running
+service holds the topic, `ExecStopPost` in that service announces a clean
+shutdown, and an MQTT last will covers a crash or a power cut. `xpg-mqtt-avail`
+is the one-message publisher both of those use.
 
 ## Packages
 
@@ -87,10 +93,11 @@ The test needs no root, no NAS and no card — it mocks all three:
 
 ```bash
 bash test/dedupe-test.sh
+bash test/mqtt-avail-test.sh
 ```
 
-It asserts the three behaviours that matter, and it is the reason the duplicate
-copy bug was caught rather than shipped:
+The first asserts the three behaviours that matter, and it is the reason the
+duplicate copy bug was caught rather than shipped:
 
 1. a first plug-in copies everything
 2. re-plugging an identical card copies **nothing** and creates no folder

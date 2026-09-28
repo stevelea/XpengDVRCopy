@@ -13,8 +13,10 @@ Type=oneshot
 # Wait for a DHCP address before trying to reach the NAS.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip route | grep -q "^default" && exit 0; sleep 2; done; exit 0'
 ExecStart=/usr/local/bin/copyusb.sh /dev/%I
-# Mark the MQTT entities unavailable once no copy is running.
-ExecStopPost=-/usr/local/bin/xpg-mqtt-avail offline
+# No ExecStopPost marking the MQTT entities offline here. This unit stops at the
+# same instant it publishes "safe", so doing that made Home Assistant show
+# "unavailable" instead of the status you were waiting for. Availability is owned
+# by xpg-mqtt-avail.service, which stays up.
 TimeoutStartSec=infinity
 Nice=10
 IOSchedulingClass=idle
