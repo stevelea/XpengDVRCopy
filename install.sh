@@ -148,36 +148,14 @@ else
 fi
 
 say "Installing the plug-in detection service"
-cat > "/etc/systemd/system/$SERVICE" <<'UNIT'
-[Unit]
-Description=Archive car-camera USB ($1) to the NAS share
-After=network-online.target remote-fs.target
-Wants=network-online.target
-StartLimitIntervalSec=0
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-# Wait for a DHCP address before trying to reach the NAS.
-ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip route | grep -q "^default" && exit 0; sleep 2; done; exit 0'
-ExecStart=/usr/local/bin/copyusb.sh /dev/%I
-# Mark the MQTT entities unavailable once no copy is running.
-ExecStopPost=-/usr/local/bin/xpg-mqtt-avail offline
-TimeoutStartSec=infinity
-Nice=10
-IOSchedulingClass=idle
-StandardOutput=journal
-StandardError=journal
-UNIT
+# Installed from deploy/ rather than written inline: the unit had already drifted
+# from the tested copy once, and an inline duplicate guarantees it happens again.
+install -m 644 "$HERE/deploy/xpg-camera-copy@.service" "/etc/systemd/system/$SERVICE"
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null 2>&1 || true
 
 say "Installing the udev rule (any USB mass-storage partition)"
-cat > /etc/udev/rules.d/99-xpg-camera.rules <<'RULE'
-# When a USB storage partition appears, archive it to the NAS.
-ACTION=="add", SUBSYSTEM=="block", KERNEL=="sd[a-z][0-9]", ENV{ID_BUS}=="usb", TAG+="systemd", ENV{SYSTEMD_WANTS}+="xpg-camera-copy@%k.service"
-ACTION=="add", SUBSYSTEM=="block", KERNEL=="mmcblk[0-9]p[0-9]", ENV{ID_BUS}=="usb", TAG+="systemd", ENV{SYSTEMD_WANTS}+="xpg-camera-copy@%k.service"
-RULE
+install -m 644 "$HERE/deploy/99-xpg-camera.rules" /etc/udev/rules.d/99-xpg-camera.rules
 udevadm control --reload-rules
 udevadm trigger --subsystem-match=block --action=add || true
 

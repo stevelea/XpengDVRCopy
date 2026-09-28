@@ -6,7 +6,10 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
-RemainAfterExit=yes
+# RemainAfterExit must NOT be set. With it, the unit stays "active (exited)"
+# after the first copy, so systemd considers a later start request already
+# satisfied and the second insertion silently does nothing. Leaving it unset
+# returns the unit to inactive, which is what lets udev start it again.
 # Wait for a DHCP address before trying to reach the NAS.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip route | grep -q "^default" && exit 0; sleep 2; done; exit 0'
 ExecStart=/usr/local/bin/copyusb.sh /dev/%I
