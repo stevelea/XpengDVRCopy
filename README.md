@@ -3,19 +3,20 @@
 **Archive your car's dashcam/DVR USB stick to a NAS automatically, and get a
 Home Assistant status that tells you when it is safe to pull the stick out.**
 
-Plug the car's USB drive into a Raspberry Pi. The Pi copies everything to a
+Plug the car's USB drive into a small always-on board. It copies everything to a
 network share, folder structure intact, skipping anything it has already
 archived. A status is published over MQTT so Home Assistant (or an LED) can tell
 you the moment it is safe to remove the drive.
 
-Built and tested on a **Raspberry Pi Zero W** running Raspberry Pi OS
-(Debian 12 bookworm), archiving to a **UniFi UNAS** over SMB/CIFS.
+Running on an **Orange Pi 3 LTS** (Armbian, kernel 6.18) archiving to a **UniFi
+UNAS** over SMB/CIFS. See [Hardware](#hardware) for what matters when picking a
+board - it is the network path, not the CPU.
 
 ```
- ┌──────────────┐   SMB/CIFS    ┌──────────────┐   USB OTG   ┌──────────────┐
- │  NAS share   │◀──────────────│  Raspberry   │◀────────────│  Car DVR USB │
- │ 192.168.x.x  │  (read-only   │   Pi Zero W  │   (or any   │    stick     │
- └──────────────┘   archive)    └──────┬───────┘    Pi)      └──────────────┘
+ ┌──────────────┐   SMB/CIFS    ┌──────────────┐     USB      ┌──────────────┐
+ │  NAS share   │◀──────────────│  Orange Pi   │◀────────────│  Car DVR USB │
+ │ 192.168.x.x  │  (read-only   │    3 LTS     │    (any      │    stick     │
+ └──────────────┘   archive)    └──────┬───────┘    board)    └──────────────┘
                                        │ MQTT
                                        ▼
                                 ┌──────────────┐
@@ -87,7 +88,7 @@ version.
 
 ## Install
 
-On a fresh Raspberry Pi OS install:
+On a fresh Debian, Armbian or Raspberry Pi OS install:
 
 ```bash
 git clone https://github.com/stevelea/XpengDVRCopy.git
@@ -123,7 +124,8 @@ edits.
 
 ## Usage
 
-Plug the drive into the Pi's **USB OTG data port**. That's it.
+Plug the drive into the board's **USB port** - on a Zero-class board
+that means the OTG data port, not the power-only one. That's it.
 
 | Signal | Meaning |
 | --- | --- |
@@ -192,7 +194,9 @@ actions:
 
 Set `MQTT_ENABLED="0"` in `/etc/xpg-camera-copy.conf` to turn reporting off.
 
-## Other hardware than a Raspberry Pi
+## Hardware
+
+This runs on any small always-on Linux board with a USB host port.
 
 The copy logic is board-agnostic: the udev rule matches any USB storage device,
 the service waits for a default route rather than for a particular network
@@ -211,8 +215,11 @@ MQTT_DEVICE_MODEL="USB card archiver"
 
 `LED_NAME` empty means "take the first LED that can be driven"; `"none"` means
 no LED at all. **A board with no controllable LED is fine** — the copy is
-unaffected, and the MQTT status is the indication instead. Check what a board
-offers with:
+unaffected, and the MQTT status is the indication instead. Deriving a name from
+the error is not fun, so the auto-detect also knows the Orange Pi names
+(`orangepi:red:status`, `orangepi:green:power`) and skips keyboard LEDs, which is
+what it otherwise picks on an Orange Pi. On the Orange Pi 3 LTS it resolves to
+`/sys/class/leds/orangepi:red:status`. Check what a board offers with:
 
 ```bash
 for d in /sys/class/leds/*; do echo "$d  writable=$([ -w $d/trigger ] && echo yes)"; done
@@ -223,10 +230,23 @@ If you run more than one of these boards, give each its own `MQTT_PREFIX` or
 
 ### Why it is worth using a faster board
 
-The bottleneck is the **network path, not the CPU**. A Raspberry Pi Zero W
-copies at roughly 1 MB/s over SMB — 310 GB took about 63 hours in practice. Any
-quad-core board with USB 3.0 and gigabit Ethernet copies at closer to 100 MB/s,
-turning the same archive into about 50 minutes. Wired is worth the cable.
+The bottleneck is the **network path, not the CPU**, and it is not a small
+effect. Measured on the same NAS and share:
+
+| Board | Large file | Small files | A 164 GB card, copied for real |
+| --- | --- | --- | --- |
+| Raspberry Pi Zero W, 100 Mb Wi-Fi | ~1 MB/s | ~1 MB/s | days |
+| Orange Pi 3 LTS, gigabit wired | 57-58 MB/s | 10.6 MB/s | ~2 hours |
+
+The two transfer figures are synthetic: one big file, then many small ones. A
+real card sits between them at about **20 MB/s** — dashcam sticks are tens of
+thousands of small clips, so each file costs a round-trip that the CPU does not
+matter for. **Wired gigabit Ethernet is the single biggest win**, and it is worth
+running a cable for. A Zero-class board still works, it just means leaving the
+stick in overnight.
+
+Home Assistant shows a `copying` status with a running file and byte count, so
+if you are unsure how long is left, look there rather than at the LED.
 
 ### Android will not work
 
@@ -333,8 +353,10 @@ sudo systemctl daemon-reload
 
 ## Requirements
 
-- Raspberry Pi (any model with a USB host/OTG port) running Raspberry Pi OS
-  bookworm or similar
+- An always-on Linux board with a USB host port — validated on an Orange Pi
+  3 LTS (Armbian, kernel 6.18, aarch64) and a Raspberry Pi Zero W (Raspberry Pi
+  OS bookworm); Debian/Ubuntu on x86 works too
+- systemd and udev, which is what does the plug-in detection
 - `cifs-utils`, `rsync` and (optionally) `mosquitto-clients` — installed
   automatically by `install.sh`
 - An SMB/CIFS share with write access

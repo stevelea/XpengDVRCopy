@@ -192,7 +192,7 @@ publish() {
 }
 
 # Availability: "online" while a plug-in is being handled, "offline" otherwise.
-# Home Assistant marks the entities unavailable when the Pi is down.
+# Home Assistant marks the entities unavailable when the board is down.
 # Kaart aangesloten of niet. Wordt ook door de udev-regel bij verwijderen
 # gezet, zodat Home Assistant het verschil ziet.
 publish_usb_state() {

@@ -1,7 +1,8 @@
 #!/bin/bash
-# install.sh - set up a Raspberry Pi to archive car DVR footage to a NAS share.
+# install.sh - set up a small Linux board to archive car DVR footage to a NAS
+# share.
 #
-# Run ON THE PI as root:
+# Run ON THE BOARD as root (Debian, Armbian or Raspberry Pi OS):
 #     sudo bash install.sh
 #
 # Optional environment overrides:

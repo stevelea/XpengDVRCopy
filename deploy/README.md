@@ -1,12 +1,16 @@
 # The archiver — copying cards to the share
 
-Runs on the Raspberry Pi the car's USB stick is plugged into. It has no user
+Runs on the small board the car's USB stick is plugged into. It has no user
 interface: a udev rule notices a new USB storage partition and starts a systemd
 service, which runs one shell script. The script copies the card to the share and
 reports over MQTT, then exits.
 
 Everything here was recovered from a working installation (`2026-09-17`), so it
 is the code that is actually running rather than a remembered version.
+
+`install.sh` in the repository root installs all of this for you; the manual
+steps below are what it does, kept for reading and for repairing a broken
+install.
 
 ## The files
 
@@ -34,7 +38,7 @@ state.
 
 ## Packages
 
-As installed on this Pi, from `dpkg-query`:
+As installed on the Orange Pi, from `dpkg-query`:
 
 ```
 cifs-utils          mounting the share
@@ -49,13 +53,13 @@ exfatprogs          so exFAT cards mount
 ```bash
 sudo apt-get install -y cifs-utils rsync mosquitto-clients exfatprogs
 
-sudo install -m 755 deploy/pi/copyusb.sh      /usr/local/bin/copyusb.sh
-sudo install -m 755 deploy/pi/xpg-usb-state   /usr/local/bin/xpg-usb-state
-sudo install -m 755 deploy/pi/xpg-mqtt-avail  /usr/local/bin/xpg-mqtt-avail
-sudo install -m 644 deploy/pi/xpg-camera-copy@.service /etc/systemd/system/
-sudo install -m 644 deploy/pi/99-xpg-camera.rules      /etc/udev/rules.d/
+sudo install -m 755 deploy/copyusb.sh      /usr/local/bin/copyusb.sh
+sudo install -m 755 deploy/xpg-usb-state   /usr/local/bin/xpg-usb-state
+sudo install -m 755 deploy/xpg-mqtt-avail  /usr/local/bin/xpg-mqtt-avail
+sudo install -m 644 deploy/xpg-camera-copy@.service /etc/systemd/system/
+sudo install -m 644 deploy/99-xpg-camera.rules      /etc/udev/rules.d/
 
-sudo install -m 644 deploy/pi/xpg-camera-copy.conf.example /etc/xpg-camera-copy.conf
+sudo install -m 644 xpg-camera-copy.conf.example /etc/xpg-camera-copy.conf
 sudoedit /etc/xpg-camera-copy.conf     # set MQTT_HOST, MQTT_USER, MQTT_PASS
 
 sudo systemctl daemon-reload
@@ -74,7 +78,7 @@ sudo chmod 600 /etc/samba/creds-xpg006camera
 //192.168.1.235/Shared_Drive /mnt/nas/xpg006camera cifs credentials=/etc/samba/creds-xpg006camera,uid=0,gid=0,iocharset=utf8,vers=3.0,nofail,_netdev,x-systemd.automount,x-systemd.idle-timeout=120,file_mode=0664,dir_mode=0775 0 0
 ```
 
-`nofail` matters: without it the Pi will not finish booting when the NAS is
+`nofail` matters: without it the board will not finish booting when the NAS is
 switched off.
 
 ## Test it
@@ -125,11 +129,17 @@ grep -c xpg006camera /etc/fstab    # expect 2: one comment, one entry
 
 ## Known limits
 
-- **Slow, because the hardware is.** A Pi Zero W is a single-core ARMv6 with
-  427 MB of RAM doing USB reads, SMB framing and rsync on one core. Around
-  1 MB/s is what it does. A 35 GB card takes days, not hours.
+- **The network path decides the speed.** Measured against the same NAS and
+  share: a Raspberry Pi Zero W on 100 Mb Wi-Fi managed about 1 MB/s, so a 310 GB
+  archive took roughly 63 hours. An Orange Pi 3 LTS on gigabit Ethernet does
+  57-58 MB/s on large files and 10.6 MB/s on small ones. A real card is mostly
+  small clips, so a live copy settled at about 20 MB/s: 164 GB in roughly two
+  hours. The limit is the link, not the CPU.
 - **The dedupe scan is not the bottleneck.** On a 11,470-file card it took
-  109 seconds against many hours of copying.
+  109 seconds, against hours of copying on the slow board.
+- **One copy per insertion, not per boot.** The unit is `Type=oneshot` with no
+  `RemainAfterExit`: it must go back to `inactive` when the copy ends, or systemd
+  considers the device already handled and ignores every later plug-in.
 - **A card written on a Mac brings junk** — `._*` AppleDouble files and
   `.fseventsd` — and each small file costs a full SMB round-trip. Excluding them
   would speed up a first copy, at the cost of not archiving everything.

@@ -34,7 +34,8 @@ MQTT_DEVICE_MANUFACTURER=""      # blank leaves it out of the discovery payload
 # LED feedback (optional - the board may not have a controllable one)
 # ---------------------------------------------------------------------------
 # Leave empty to auto-detect the first drivable LED, or name one explicitly:
-#   Raspberry Pi   LED_NAME="ACT"
-#   Orange Pi      LED_NAME="green:red"   (check /sys/class/leds/)
+#   Orange Pi 3 LTS  LED_NAME="orangepi:red:status"
+#   Raspberry Pi     LED_NAME="ACT"
+#   (list the candidates with: ls /sys/class/leds/)
 #   no LED, or don't want it:  LED_NAME="none"
 LED_NAME=""
